@@ -10,6 +10,10 @@ use App\Repositories\Eloquent\TransactionRepository;
 use App\Services\Fraud\FraudPipeline;
 use App\Services\Fraud\Rules\DailyLimitRule;
 use App\Services\Fraud\Rules\HourlyRecipientLimitRule;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Http\Request;
+
 
 
 class AppServiceProvider extends ServiceProvider
@@ -36,7 +40,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        RateLimiter::for('transfer', function (Request $request) {
+            return Limit::perMinute(10)
+                ->by($request->user()?->id ?: $request->ip());
+        });
     }
 
     
