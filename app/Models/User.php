@@ -12,7 +12,8 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
+
 
     /**
      * The attributes that are mass assignable.
@@ -47,9 +48,17 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    
+
+    public function wallets()
+    {
+        return $this->hasMany(Wallet::class);
+    }
+
+    public function fraudFlags()
+    {
+        return $this->hasMany(FraudFlag::class);
+    }
 }
 
-class User extends Authenticatable
-{
-    use HasApiTokens, HasFactory, Notifiable;
-}
