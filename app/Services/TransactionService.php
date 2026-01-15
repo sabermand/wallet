@@ -9,6 +9,8 @@ use App\Repositories\Contracts\WalletRepositoryInterface;
 use App\Services\Fees\FeeResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Services\Fraud\FraudContext;
+use App\Services\Fraud\FraudPipeline;
 
 class TransactionService
 {
@@ -16,6 +18,7 @@ class TransactionService
         private readonly WalletRepositoryInterface $wallets,
         private readonly TransactionRepositoryInterface $transactions,
         private readonly FeeResolver $feeResolver,
+        private readonly FraudPipeline $fraudPipeline,
     ) {}
 
     /**
@@ -85,6 +88,18 @@ class TransactionService
                     'currency' => 'Source and destination wallets must have the same currency.',
                 ]);
             }
+
+            // Create fraud context
+            $context = new FraudContext(
+                sourceWallet: $source,
+                destinationWallet: $destination,
+                amount: $amount,
+                currency: $source->currency,
+                ipAddress: $ipAddress
+            );
+
+            // Run fraud detection rules
+            $this->fraudPipeline->run($context);
 
             // Resolve and calculate transaction fee
             $calculator = $this->feeResolver->resolve($amount);

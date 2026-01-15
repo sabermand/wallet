@@ -7,6 +7,9 @@ use App\Repositories\Contracts\WalletRepositoryInterface;
 use App\Repositories\Contracts\TransactionRepositoryInterface;
 use App\Repositories\Eloquent\WalletRepository;
 use App\Repositories\Eloquent\TransactionRepository;
+use App\Services\Fraud\FraudPipeline;
+use App\Services\Fraud\Rules\DailyLimitRule;
+use App\Services\Fraud\Rules\HourlyRecipientLimitRule;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -18,6 +21,13 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(WalletRepositoryInterface::class, WalletRepository::class);
         $this->app->bind(TransactionRepositoryInterface::class, TransactionRepository::class);
+
+        $this->app->bind(FraudPipeline::class, function () {
+            return new FraudPipeline([
+                new DailyLimitRule(),
+                new HourlyRecipientLimitRule(),
+            ]);
+        });
     }
 
 
