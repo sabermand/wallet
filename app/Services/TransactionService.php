@@ -99,7 +99,33 @@ class TransactionService
             );
 
             // Run fraud detection rules
-            $this->fraudPipeline->run($context);
+            try {
+                $this->fraudPipeline->run($context);
+            } catch (RequiresManualApprovalException $e) {
+                $tx = $this->transactions->create([
+                    'type' => 'transfer',
+                    'status' => 'pending_review',
+                    'currency' => $source->currency,
+                    'amount' => $amount,
+                    'fee_amount' => 0,
+                    'source_wallet_id' => $source->id,
+                    'destination_wallet_id' => $destination->id,
+                    'idempotency_key' => $idempotencyKey,
+                    'ip_address' => $ipAddress,
+                    'completed_at' => null,
+                ]);
+
+                FraudFlag::query()->create([
+                    'transaction_id' => $tx->id,
+                    'user_id' => $source->user_id,
+                    'rule_type' => $e->ruleType,
+                    'flagged_amount' => $amount,
+                    'details' => $e->details,
+                    'triggered_at' => now(),
+                ]);
+
+                return $tx;
+            }
 
             // Resolve and calculate transaction fee
             $calculator = $this->feeResolver->resolve($amount);
@@ -145,6 +171,140 @@ class TransactionService
             ]);
 
             return $transaction;
+        });
+    }
+
+    public function getById(string $id): Transaction
+    {
+        return \App\Models\Transaction::query()->with('fee')->findOrFail($id);
+    }
+
+    public function deposit(string $walletId, float $amount, ?string $ipAddress = null): Transaction
+    {
+        if ($amount <= 0) {
+            throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
+        }
+
+        return DB::transaction(function () use ($walletId, $amount, $ipAddress) {
+            /** @var Wallet $wallet */
+            $wallet = Wallet::query()->where('id', $walletId)->lockForUpdate()->firstOrFail();
+
+            // Incoming transactions are allowed even if blocked (per spec for block/unblock later)
+            $tx = $this->transactions->create([
+                'type' => 'deposit',
+                'status' => 'completed',
+                'currency' => $wallet->currency,
+                'amount' => $amount,
+                'fee_amount' => 0,
+                'destination_wallet_id' => $wallet->id,
+                'ip_address' => $ipAddress,
+                'completed_at' => now(),
+            ]);
+
+            $wallet->balance = (float) $wallet->balance + $amount;
+            $wallet->save();
+
+            return $tx;
+        });
+    }
+
+    public function withdraw(string $walletId, float $amount, ?string $ipAddress = null): Transaction
+    {
+        if ($amount <= 0) {
+            throw ValidationException::withMessages(['amount' => 'Amount must be greater than zero.']);
+        }
+
+        return DB::transaction(function () use ($walletId, $amount, $ipAddress) {
+            /** @var Wallet $wallet */
+            $wallet = Wallet::query()->where('id', $walletId)->lockForUpdate()->firstOrFail();
+
+            if ($wallet->status === 'blocked') {
+                throw ValidationException::withMessages([
+                    'wallet' => 'Wallet is blocked and cannot perform outgoing transactions.',
+                ]);
+            }
+
+            if ((float) $wallet->balance < $amount) {
+                throw ValidationException::withMessages([
+                    'balance' => 'Insufficient balance to complete the withdrawal.',
+                ]);
+            }
+
+            $tx = $this->transactions->create([
+                'type' => 'withdrawal',
+                'status' => 'completed',
+                'currency' => $wallet->currency,
+                'amount' => $amount,
+                'fee_amount' => 0,
+                'source_wallet_id' => $wallet->id,
+                'ip_address' => $ipAddress,
+                'completed_at' => now(),
+            ]);
+
+            $wallet->balance = (float) $wallet->balance - $amount;
+            $wallet->save();
+
+            return $tx;
+        });
+    }
+
+    public function refund(string $transactionId, ?string $reason = null): Transaction
+    {
+        return DB::transaction(function () use ($transactionId, $reason) {
+            /** @var Transaction $original */
+            $original = Transaction::query()->where('id', $transactionId)->lockForUpdate()->firstOrFail();
+
+            if ($original->type !== 'transfer') {
+                throw ValidationException::withMessages([
+                    'transaction' => 'Only transfer transactions can be refunded.',
+                ]);
+            }
+
+            // Prevent double refunds
+            $alreadyRefunded = Transaction::query()
+                ->where('type', 'refund')
+                ->where('refunded_transaction_id', $original->id)
+                ->exists();
+
+            if ($alreadyRefunded) {
+                throw ValidationException::withMessages([
+                    'refund' => 'This transaction has already been refunded.',
+                ]);
+            }
+
+            // Load wallets and lock them
+            $source = Wallet::query()->with('user')->where('id', $original->source_wallet_id)->lockForUpdate()->firstOrFail();
+            $dest = Wallet::query()->where('id', $original->destination_wallet_id)->lockForUpdate()->firstOrFail();
+
+            // Refund amount back from destination to source (fee is not refunded here; can be adjusted later)
+            if ((float) $dest->balance < (float) $original->amount) {
+                throw ValidationException::withMessages([
+                    'balance' => 'Destination wallet has insufficient balance to process the refund.',
+                ]);
+            }
+
+            $refundTx = $this->transactions->create([
+                'type' => 'refund',
+                'status' => 'completed',
+                'currency' => $original->currency,
+                'amount' => (float) $original->amount,
+                'fee_amount' => 0,
+                'source_wallet_id' => $dest->id,
+                'destination_wallet_id' => $source->id,
+                'refunded_transaction_id' => $original->id,
+                'completed_at' => now(),
+                'ip_address' => null,
+            ]);
+
+            $dest->balance = (float) $dest->balance - (float) $original->amount;
+            $source->balance = (float) $source->balance + (float) $original->amount;
+
+            $dest->save();
+            $source->save();
+
+            // Optional: store reason somewhere later (audit_logs table). For now keep it out.
+
+            return $refundTx;
         });
     }
 }

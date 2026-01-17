@@ -4,8 +4,12 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TransferRequest;
+use App\Http\Requests\Transactions\DepositRequest;
+use App\Http\Requests\Transactions\WithdrawRequest;
+use App\Http\Requests\Transactions\RefundRequest;
 use App\Services\TransactionService;
 use Illuminate\Http\Request;
+
 
 class TransactionController extends Controller
 {
@@ -37,5 +41,44 @@ class TransactionController extends Controller
                 'completed_at' => $tx->completed_at,
             ],
         ], 201);
+    }
+
+    public function deposit(DepositRequest $request)
+    {
+        $tx = $this->transactionService->deposit(
+            walletId: $request->validated('wallet_id'),
+            amount: (float) $request->validated('amount'),
+            ipAddress: $request->ip()
+        );
+
+        return response()->json(['data' => $tx], 201);
+    }
+
+    public function withdraw(WithdrawRequest $request)
+    {
+        $tx = $this->transactionService->withdraw(
+            walletId: $request->validated('wallet_id'),
+            amount: (float) $request->validated('amount'),
+            ipAddress: $request->ip()
+        );
+
+        return response()->json(['data' => $tx], 201);
+    }
+
+    public function show(string $id)
+    {
+        $tx = $this->transactionService->getById($id);
+
+        return response()->json(['data' => $tx]);
+    }
+
+    public function refund(RefundRequest $request, string $id)
+    {
+        $tx = $this->transactionService->refund(
+            transactionId: $id,
+            reason: $request->validated('reason')
+        );
+
+        return response()->json(['data' => $tx], 201);
     }
 }

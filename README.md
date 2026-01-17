@@ -1,59 +1,207 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Digital Wallet API (Laravel 12)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A backend-only RESTful API for a fintech-style digital wallet system, designed with correctness, security, and scalability in mind.
 
-## About Laravel
+This project implements wallet management, money transfers, fraud detection, admin review workflows, and aggregated statistics with Redis caching.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+##  Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Core Functionality
+- Token-based authentication using Laravel Sanctum
+- Multi-currency wallet support (TRY, USD, EUR)
+- Transactions: Deposit, Withdrawal, Transfer, Refund
+- Atomic balance updates with database transactions and row-level locking
+- Idempotency support for transfer requests
+- Fee calculation using Strategy Pattern
 
-## Learning Laravel
+### Fraud & Risk Management
+- Rule-based fraud detection (Pipeline / Chain of Responsibility)
+- Automatic transaction flagging
+- Manual review workflow (pending_review)
+- Multiple configurable fraud rules
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Admin Capabilities
+- Review, approve, reject suspicious transactions
+- Aggregated statistics endpoint
+- Redis-based caching for heavy queries
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Performance & Infrastructure
+- Redis for cache and rate limiting
+- Pagination on all list endpoints
+- Artisan operational commands
 
-## Laravel Sponsors
+### Testing
+- Unit tests for fee logic
+- Feature tests for transfer and auth flows
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+---
 
-### Premium Partners
+##  Tech Stack
+- PHP 8.3+
+- Laravel 12
+- MySQL / MariaDB
+- Redis
+- PHPUnit
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+---
 
-## Contributing
+##  Requirements
+- PHP 8.3+
+- Composer
+- MySQL or MariaDB
+- Redis Server
+- Git
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+---
 
-## Code of Conduct
+##  Installation
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+git clone https://github.com/sabermand/wallet.git
+cd wallet
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+```
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+##  Redis Setup
 
-## License
+.env:
+```env
+CACHE_STORE=redis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+---
+
+##  Run
+```bash
+php artisan serve
+```
+
+---
+
+##  Tests
+```bash
+php artisan test
+```
+
+---
+
+##  Artisan Commands
+```bash
+php artisan stats:refresh-cache
+```
+
+---
+
+## 📡 API Endpoints (v1) — With Request & Response Examples
+
+### Global Headers
+```
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {SANCTUM_TOKEN}
+```
+
+Transfer endpoints also require:
+```
+Idempotency-Key: {unique-key}
+```
+
+---
+
+### Auth
+
+#### Register
+POST `/api/v1/auth/register`
+```json
+{
+  "name": "Hamid",
+  "email": "hamid@example.com",
+  "password": "Pass1234!",
+  "password_confirmation": "Pass1234!"
+}
+```
+
+#### Login
+POST `/api/v1/auth/login`
+```json
+{
+  "email": "hamid@example.com",
+  "password": "Pass1234!"
+}
+```
+
+---
+
+### Wallets
+
+#### Create Wallet
+POST `/api/v1/wallets`
+```json
+{
+  "currency": "TRY"
+}
+```
+
+#### List Wallets
+GET `/api/v1/wallets`
+
+#### Wallet Balance
+GET `/api/v1/wallets/{wallet_id}/balance`
+
+---
+
+### Transactions
+
+#### Deposit
+POST `/api/v1/transactions/deposit`
+```json
+{
+  "wallet_id": "WALLET_UUID",
+  "amount": 500
+}
+```
+
+#### Withdraw
+POST `/api/v1/transactions/withdraw`
+```json
+{
+  "wallet_id": "WALLET_UUID",
+  "amount": 200
+}
+```
+
+#### Transfer (Idempotent)
+POST `/api/v1/transactions/transfer`
+```json
+{
+  "source_wallet_id": "WALLET_UUID_1",
+  "destination_wallet_id": "WALLET_UUID_2",
+  "amount": 100
+}
+```
+
+---
+
+### Admin
+
+#### Pending Review
+GET `/api/v1/admin/transactions/pending-review`
+
+#### Approve Transaction
+POST `/api/v1/admin/transactions/{id}/approve`
+
+#### Reject Transaction
+POST `/api/v1/admin/transactions/{id}/reject`
+
+#### Statistics (Cached)
+GET `/api/v1/admin/statistics`
+
