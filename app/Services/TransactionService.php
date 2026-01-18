@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Services\Fraud\FraudContext;
 use App\Services\Fraud\FraudPipeline;
+use App\Services\Fraud\Exceptions\RequiresManualApprovalException;
+use App\Models\FraudFlag;
 
 class TransactionService
 {
@@ -102,7 +104,7 @@ class TransactionService
             try {
                 $this->fraudPipeline->run($context);
             } catch (RequiresManualApprovalException $e) {
-                $tx = $this->transactions->create([
+                $pendingTx = $this->transactions->create([
                     'type' => 'transfer',
                     'status' => 'pending_review',
                     'currency' => $source->currency,
@@ -116,7 +118,7 @@ class TransactionService
                 ]);
 
                 FraudFlag::query()->create([
-                    'transaction_id' => $tx->id,
+                    'transaction_id' => $pendingTx->id,
                     'user_id' => $source->user_id,
                     'rule_type' => $e->ruleType,
                     'flagged_amount' => $amount,
@@ -124,8 +126,9 @@ class TransactionService
                     'triggered_at' => now(),
                 ]);
 
-                return $tx;
+                return $pendingTx;
             }
+
 
             // Resolve and calculate transaction fee
             $calculator = $this->feeResolver->resolve($amount);

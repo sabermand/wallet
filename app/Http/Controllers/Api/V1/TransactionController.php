@@ -28,6 +28,8 @@ class TransactionController extends Controller
             ipAddress: $ipAddress
         );
 
+        $statusCode = $tx->status === 'pending_review' ? 202 : 201;
+
         return response()->json([
             'data' => [
                 'id' => $tx->id,
@@ -40,8 +42,9 @@ class TransactionController extends Controller
                 'destination_wallet_id' => $tx->destination_wallet_id,
                 'completed_at' => $tx->completed_at,
             ],
-        ], 201);
+        ], $statusCode);
     }
+
 
     public function deposit(DepositRequest $request)
     {
